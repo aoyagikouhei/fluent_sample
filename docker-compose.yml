@@ -1,0 +1,20 @@
+services:
+  https-portal:
+    image: steveltn/https-portal:1
+    ports:
+      - "443:443"
+    environment:
+      DOMAINS: "localhost -> http://web:8080, https-portal -> http://web:8080"
+      STAGE: local
+    depends_on:
+      - web
+
+  fluentd:
+    build: ./apps/fluentd
+    ports:
+      - "9880:9880"
+    depends_on:
+      - https-portal
+
+  web:
+    build: ./apps/web
