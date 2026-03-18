@@ -45,9 +45,19 @@ docker-compose.yml
 
 ## 動作確認
 ```bash
+# curlでHTTP経由でログ送信
 curl -X POST http://localhost:9880/log.access \
   -H "Content-Type: application/json" \
   -d '{"message": "hello"}'
+
+# fluent-catでforward経由でログ送信
+echo '{"message":"hello from cli"}' | docker compose exec -T fluentd fluent-cat log.access
+
+# 送信後のログ確認
+docker compose logs web
+
+# 別ターミナルでリアルタイム監視（送信前に起動しておくと便利）
+docker compose logs -f web
 ```
 
 ## Rust
