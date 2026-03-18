@@ -1,3 +1,6 @@
+# 開発ルール
+- コードを修正した後は必ず `docker compose up -d --build` で再ビルド・起動し、curlでログ送信 → `docker compose logs web` で動作確認を行うこと
+
 # fluentdのサンプルプロジェクト
 docker　composeを利用したfluentdのサンプルプロジェクトです
 docker composeで管理するサービスは以下の2つになります。
@@ -29,7 +32,7 @@ docker-compose.yml
 - 出力: `out_http` プラグインでWebサービスへHTTP POST転送
 
 ## Web
-- エンドポイント: `POST /logs`
+- エンドポイント: `POST /{path}`（ワイルドカード）
 - リクエスト形式: JSON
 - 受信後の処理: 標準出力にログを表示
 - リッスンポート: 8080
@@ -43,57 +46,57 @@ docker-compose.yml
 ```bash
 curl -X POST http://localhost:9880/log.access \
   -H "Content-Type: application/json" \
-  -d '{"path": "log1", "message": "hello"}'
+  -d '{"message": "hello"}'
 ```
 
 ## Rust
 - エディション: 2021
 
-# fluentd `${path}` プレースホルダの仕組み
+# fluentd `${tag[1]}` プレースホルダの仕組み
 
-## なぜ `${path}` でJSONのフィールドが読めるのか
+## なぜタグからエンドポイントが決まるのか
 
-fluentdでは**レコード（ログイベント）のフィールド名**と**バッファのチャンクキー**の2つの仕組みが連携して動作しています。
+fluentdでは**タグ**と**バッファのチャンクキー**の2つの仕組みが連携して動作しています。
 
-### ステップ1: レコードのフィールド
+### ステップ1: タグの決定
 
-fluentdに送られるJSONデータ `{"path": "log1", "message": "hello"}` は、fluentd内部で**レコード**として扱われます。各キー（`path`, `message`）はレコードのフィールドになります。
+`in_http` プラグインでは、URLパスがタグになります。例えば `http://localhost:9880/log.access` にPOSTすると、タグは `log.access` になります。タグはドット区切りで、`tag[0]` = `log`、`tag[1]` = `access` となります。
 
-### ステップ2: `<buffer path>` のチャンクキー
+### ステップ2: `<buffer tag>` のチャンクキー
 
 ```conf
-<buffer path>
+<buffer tag>
   flush_interval 1s
 </buffer>
 ```
 
-`<buffer path>` の `path` は**チャンクキー**と呼ばれます。これはfluentdに対して「レコードの`path`フィールドの値ごとにバッファチャンクを分けろ」と指示しています。
+`<buffer tag>` の `tag` は**チャンクキー**と呼ばれます。これはfluentdに対して「タグの値ごとにバッファチャンクを分けろ」と指示しています。
 
 つまり:
-- `path=log1` のレコード → チャンク1
-- `path=log2` のレコード → チャンク2
+- `log.access` のレコード → チャンク1
+- `log.error` のレコード → チャンク2
 
 と別々のバッファに振り分けられます。
 
 ### ステップ3: `endpoint` のプレースホルダ展開
 
 ```conf
-endpoint https://https-portal:443/${path}
+endpoint https://https-portal:443/${tag[1]}
 ```
 
-`out_http`プラグインがバッファをフラッシュ（送信）する際、`${path}` は**そのチャンクのチャンクキーの値**に置換されます。
+`out_http`プラグインがバッファをフラッシュ（送信）する際、`${tag[1]}` は**そのチャンクのタグの2番目の部分**に置換されます。
 
-- チャンク1（`path=log1`）のフラッシュ時 → `https://https-portal:443/log1`
-- チャンク2（`path=log2`）のフラッシュ時 → `https://https-portal:443/log2`
+- チャンク1（`log.access`）のフラッシュ時 → `https://https-portal:443/access`
+- チャンク2（`log.error`）のフラッシュ時 → `https://https-portal:443/error`
 
 ### まとめ: 3つの連携
 
 ```
-JSONの "path" フィールド
+curlのURLパス /log.access → タグ "log.access"
         ↓
-<buffer path> でチャンクキーとして登録
+<buffer tag> でタグをチャンクキーとして登録
         ↓
-${path} でフラッシュ時にチャンクキーの値に展開
+${tag[1]} でフラッシュ時にタグの2番目の部分に展開
 ```
 
-**重要なポイント**: `<buffer path>` の宣言が**必須**です。これがないと fluentd はどのフィールドでチャンクを分けるべきか分からず、`${path}` プレースホルダも展開できません。`<buffer>` だけ（キーなし）だと全レコードが1つのチャンクにまとめられ、個別のフィールド値を参照できません。
+**重要なポイント**: `<buffer tag>` の宣言が**必須**です。これがないと fluentd はタグでチャンクを分けず、`${tag[1]}` プレースホルダも展開できません。また、`<match log.*>` のパターンにより `log.` で始まるタグのみがマッチするため、不正なタグは転送されません。
