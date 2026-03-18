@@ -30,6 +30,7 @@ docker-compose.yml
 ## fluentd
 - 入力: `in_http` プラグイン、ポート 9880
 - 出力: `out_http` プラグインでWebサービスへHTTP POST転送
+- 環境変数 `ENDPOINT_URL_PREFIX`: 出力先URLのプレフィックス（デフォルト: `https://https-portal:443`）
 
 ## Web
 - エンドポイント: `POST /{path}`（ワイルドカード）

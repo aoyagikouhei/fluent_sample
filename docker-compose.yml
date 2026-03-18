@@ -13,6 +13,8 @@ services:
     build: ./apps/fluentd
     ports:
       - "9880:9880"
+    environment:
+      ENDPOINT_URL_PREFIX: "https://https-portal:443"
     depends_on:
       - https-portal
 
