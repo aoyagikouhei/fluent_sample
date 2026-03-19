@@ -3,6 +3,7 @@ use axum::{
     body::Bytes,
     extract::Path,
     http::{HeaderMap, StatusCode},
+    response::Json,
     routing::post,
 };
 use serde_json::Value;
@@ -25,11 +26,20 @@ async fn handle_log(headers: HeaderMap, Path(path): Path<String>, body: Bytes) -
     }
 }
 
+async fn handle_log_failure() -> (StatusCode, Json<serde_json::Value>) {
+    println!("[/log-failure] Returning 400 error");
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({"message": "error occered"})),
+    )
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
     let app = Router::new()
+        .route("/log-failure", post(handle_log_failure))
         .route("/{path}", post(handle_log));
 
     let listener = TcpListener::bind("0.0.0.0:8080").await.unwrap();
